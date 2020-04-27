@@ -8,11 +8,27 @@ from threading import Timer, Thread
 import threading
 import os
 filename = "test.zip"
-buffer_size = 1024
+file_buffer_size = 1428
+
+''' First bit indicates the message type    0->handshake
+                                            1->data
+    second bit indicates last packet        0->not last
+                                            1->last
+'''
 
 
-def makepkg(sequence_number, data):
-    data_string = sequence_number.to_bytes(32, byteorder='big')+data
+def makepkg(sequence_number, data, last_packet_num):
+    sequence_number_bytes = sequence_number.to_bytes(4, byteorder='big')
+    # make the first bit 1 as this is data packet
+    first_byte = (int('80', 16) | sequence_number_bytes[0]).to_bytes(
+        1, byteorder='big')
+    sequence_number_bytes = first_byte+sequence_number_bytes[1:4]
+    # make the second bit 1 if the packet is the last one
+    if sequence_number == last_packet_num:
+        first_byte = (int('c0', 16) | sequence_number_bytes[0]).to_bytes(
+            1, byteorder='big')
+        sequence_number_bytes = first_byte+sequence_number_bytes[1:4]
+    data_string = sequence_number_bytes + data
     # print(sequence_number, "of size", len(data_string))
     return data_string
 
@@ -20,23 +36,23 @@ def makepkg(sequence_number, data):
 def listener(sok, monitor):
     while(len(monitor)):
         message, clientAddress = sok.recvfrom(2048)
-        sequence_num = int.from_bytes(message[0:32], byteorder='big')
+        sequence_num = int.from_bytes(message[0:4], byteorder='big')
         if sequence_num in monitor:
             monitor[sequence_num].cancel()
             monitor.pop(sequence_num, -1)
-        print("got ack for", sequence_num)
+        # print("got ack for", sequence_num)
     sok.close()
 
 
-def send_packet(sok, sequence_number, data, clientAddress, monitor):
+def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_num):
     if sequence_number in monitor:
         timer = Timer(0.5, send_packet, args=(sok, sequence_number,
-                                              data, clientAddress, monitor))
+                                              data, clientAddress, monitor, last_packet_num))
         timer.start()  # after 30 seconds, "hello, world" will be printed
         monitor[sequence_number] = timer
-        packet_string = makepkg(sequence_number, data)
+        packet_string = makepkg(sequence_number, data, last_packet_num)
         sok.sendto(packet_string, clientAddress)
-        print('\t\t\t\tsent packet number', sequence_number)
+        # print('\t\t\t\tsent packet number', sequence_number)
     else:
         return
 
@@ -48,16 +64,17 @@ def server(host, port):
 
     while(True):
         message, clientAddress = sok.recvfrom(2048)
-        if message.decode() == 'hello':
+        if message.decode() == 'start':
             break
 
     print('start received')
     b = os.path.getsize(filename)
-    number_of_packets = int(b/buffer_size)
-    if b % buffer_size == 0:
-        number_of_packets -= 1
+    last_packet_num = int(b/file_buffer_size)
+    if b % file_buffer_size == 0:
+        last_packet_num -= 1
+    print(last_packet_num)
     monitor = {}
-    for i in range(0, number_of_packets+1):
+    for i in range(0, last_packet_num+1):
         monitor[i] = -1
     listener_thread = Thread(
         target=listener, args=(sok, monitor))
@@ -66,11 +83,12 @@ def server(host, port):
     # exit()
     f = open(filename, "rb")
     sequence_number = 0
-    data = f.read(buffer_size)
+    data = f.read(file_buffer_size)
 
     while (data):
-        send_packet(sok, sequence_number, data, clientAddress, monitor)
-        data = f.read(buffer_size)
+        send_packet(sok, sequence_number, data,
+                    clientAddress, monitor, last_packet_num)
+        data = f.read(file_buffer_size)
         sequence_number += 1
     f.close()
 

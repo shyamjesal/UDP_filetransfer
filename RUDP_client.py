@@ -6,23 +6,28 @@ import argparse
 import pickle
 from threading import Timer, Thread
 filename = "receivedfile.zip"
-buffer_size = 1056
+buffer_size = 1500
 
 
-def unpkg(data_string):
+def unpkg(data_string, monitor):
     # data_loaded = json.loads(data)
-    data_loaded = data_string[32:]
-    sequence_num = int.from_bytes(data_string[0:32], byteorder='big')
+    data_loaded = data_string[4:]
+    first_byte = data_string[0]
+    sequence_num = (first_byte & int('3f', 16)).to_bytes(
+        1, byteorder='big') + data_string[1:4]
+    sequence_num = int.from_bytes(sequence_num[0:4], byteorder='big')
+    if (first_byte & int('80', 16)) == 128:
+        if (first_byte & int('40', 16)) == 64:
+            monitor['eof'] = sequence_num
+
+        monitor[sequence_num] = data_loaded
     # print("got packet", sequence_num, "of size", len(data_string))
-    return data_loaded, sequence_num
+    return sequence_num
 
 
 def send_ak(sok, number):
-    # t = Timer(2.0, send_ak, sok, number)
-    # t.start()  # after 30 seconds, "hello, world" will be printed
-    message = number.to_bytes(32, byteorder='big')
+    message = number.to_bytes(4, byteorder='big')
     sok.send(message)
-    # print('sending ack for', number)
 
 
 def write_file(sok, monitor):
@@ -31,9 +36,8 @@ def write_file(sok, monitor):
     while(True):
         if written in monitor:
             f.write(monitor[written])
-            print(written, "written")
             monitor.pop(written, -1)
-            if written == 1483:
+            if monitor.get('eof', -1) == written:
                 break
             written += 1
     print("file written")
@@ -62,8 +66,7 @@ def client(host, port):
     data, addr = sok.recvfrom(buffer_size)
     try:
         while(data):
-            file_bytes, number = unpkg(data)
-            monitor[number] = file_bytes
+            number = unpkg(data, monitor)
             data, addr = sok.recvfrom(buffer_size)
             send_ak(sok, number)
     except socket.timeout as e:
