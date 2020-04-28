@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 
 import socket
-import json
 import argparse
-import pickle
 from threading import Timer, Thread
 import threading
 import os
-filename = "test.zip"
+import time
+import xxhash
+filename = "assignment-3.pdf"
 file_buffer_size = 1428
 
 ''' First bit indicates the message type    0->handshake
                                             1->data
     second bit indicates last packet        0->not last
                                             1->last
+    Next 4 bytes are the xxhash value 
 '''
 
 
@@ -28,24 +29,43 @@ def makepkg(sequence_number, data, last_packet_num):
         first_byte = (int('c0', 16) | sequence_number_bytes[0]).to_bytes(
             1, byteorder='big')
         sequence_number_bytes = first_byte+sequence_number_bytes[1:4]
-    data_string = sequence_number_bytes + data
+    data_hash = xxhash.xxh32(data).digest()
+    data_string = sequence_number_bytes + data_hash + data
     # print(sequence_number, "of size", len(data_string))
     return data_string
 
 
 def listener(sok, monitor):
+    timeout_interval = 0.5
     while(len(monitor)):
-        message, clientAddress = sok.recvfrom(2048)
-        sequence_num = int.from_bytes(message[0:4], byteorder='big')
-        if sequence_num in monitor:
-            monitor[sequence_num].cancel()
-            monitor.pop(sequence_num, -1)
-        # print("got ack for", sequence_num)
+        try:
+            sok.settimeout(timeout_interval)
+            message, clientAddress = sok.recvfrom(2048)
+            sequence_num = int.from_bytes(message[0:4], byteorder='big')
+            if sequence_num in monitor:
+                monitor[sequence_num].cancel()
+                monitor.pop(sequence_num, -1)
+            # print("got ack for", sequence_num)
+        except socket.timeout:
+            print('will try after {} seconds'.format(timeout_interval))
+            timeout_interval *= 2
+        except ConnectionRefusedError:
+            print('It seems the server is not online, sleeping for {} seconds'.format(
+                timeout_interval))
+            time.sleep(timeout_interval)
+            timeout_interval *= 2
+        finally:
+            if timeout_interval > 10:
+                print('no response since 10 seconds. exiting')
+                monitor['disconnected'] = True
+                exit()
     sok.close()
 
 
 def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_num):
-    if sequence_number in monitor:
+    if monitor.get('disconnected', False):
+        return
+    elif sequence_number in monitor:
         timer = Timer(0.5, send_packet, args=(sok, sequence_number,
                                               data, clientAddress, monitor, last_packet_num))
         timer.start()  # after 30 seconds, "hello, world" will be printed
@@ -80,12 +100,13 @@ def server(host, port):
         target=listener, args=(sok, monitor))
     listener_thread.start()
 
-    # exit()
     f = open(filename, "rb")
     sequence_number = 0
     data = f.read(file_buffer_size)
 
     while (data):
+        if monitor.get('disconnected', False):
+            break
         send_packet(sok, sequence_number, data,
                     clientAddress, monitor, last_packet_num)
         data = f.read(file_buffer_size)
