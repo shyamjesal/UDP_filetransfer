@@ -5,7 +5,7 @@ from threading import Timer, Thread
 import threading
 import os
 import time
-os.system('pip install xxhash')
+# os.system('pip install xxhash')
 import xxhash
 from tkinter import filedialog
 from tkinter import *
@@ -80,7 +80,7 @@ def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_
         return
 
 
-def server(host, port):
+def Server(host, port, filename):
     sok = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     clientAddress = (host, port)
     sok.bind(clientAddress)
@@ -89,11 +89,6 @@ def server(host, port):
         message, clientAddress = sok.recvfrom(2048)
         if message.decode() == 'start':
             break
-    root = Tk()
-    root.filename =  filedialog.askopenfilename(initialdir = "./",title = "Select file",filetypes = (("all files","*.*"),("all files","*.*")))
-    print (root.filename)
-    filename = root.filename
-    root.destroy()
     print('start received')
     b = os.path.getsize(filename)
     last_packet_num = int(b/file_buffer_size)
@@ -131,5 +126,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
  
-    server(args.host, args.p)
+    Server(args.host, args.p)
     # server('127.0.0.1', 1060)

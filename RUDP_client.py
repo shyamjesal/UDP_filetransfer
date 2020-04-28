@@ -3,11 +3,11 @@
 import socket
 import argparse
 import time
+# os.system('pip install xxhash')
 import xxhash
 from threading import Timer, Thread
 filename = "receivedfile.zip"
 buffer_size = 1500
-
 
 def process_data(sok, data_string, monitor):
     # data_loaded = json.loads(data)
@@ -71,7 +71,7 @@ def initiate_handshake(host, port):
             timeout_time *= 2
 
 
-def client(host, port):
+def Client(host, port):
     sok = initiate_handshake(host, port)
     monitor = {}
     file_thread = Thread(
@@ -110,4 +110,4 @@ if __name__ == '__main__':
     parser.add_argument('-p', metavar='PORT', type=int, default=1060,
                         help='UDP port (default 1060)')
     # args = parser.parse_args()
-    client('127.0.0.1', 1060)
+    Client('127.0.0.1', 1060)
