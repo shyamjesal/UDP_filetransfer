@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-
 import socket
 import argparse
 from threading import Timer, Thread
 import threading
 import os
 import time
+os.system('pip install xxhash')
 import xxhash
-filename = "assignment-3.pdf"
+from tkinter import filedialog
+from tkinter import *
+
+# filename = "assignment-3.pdf"
 file_buffer_size = 1428
 
 ''' First bit indicates the message type    0->handshake
@@ -86,7 +89,11 @@ def server(host, port):
         message, clientAddress = sok.recvfrom(2048)
         if message.decode() == 'start':
             break
-
+    root = Tk()
+    root.filename =  filedialog.askopenfilename(initialdir = "./",title = "Select file",filetypes = (("all files","*.*"),("all files","*.*")))
+    print (root.filename)
+    filename = root.filename
+    root.destroy()
     print('start received')
     b = os.path.getsize(filename)
     last_packet_num = int(b/file_buffer_size)
@@ -115,12 +122,14 @@ def server(host, port):
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='Send and receive UDP,'
-    #                                  ' pretending packets are often dropped')
-    # parser.add_argument('host', help='interface the server listens at;'
-    #                     'host the client sends to')
-    # parser.add_argument('-p', metavar='PORT', type=int, default=1060,
-    #                     help='UDP port (default 1060)')
-    # args = parser.parse_args()
-    # server(args.host, args.p)
-    server('127.0.0.1', 1060)
+    parser = argparse.ArgumentParser(description='Send and receive UDP,'
+                                     ' pretending packets are often dropped')
+    parser.add_argument('host', help='interface the server listens at;'
+                        'host the client asks from')
+    parser.add_argument('-p', metavar='PORT', type=int, default=1060,
+                        help='UDP port (default 1060)')
+    args = parser.parse_args()
+    print(args)
+ 
+    server(args.host, args.p)
+    # server('127.0.0.1', 1060)
