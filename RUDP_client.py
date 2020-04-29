@@ -9,12 +9,13 @@ from threading import Timer, Thread
 filename = "receivedfile.zip"
 buffer_size = 1500
 
+
 def process_data(sok, data_string, monitor):
     # data_loaded = json.loads(data)
-    data_loaded = data_string[8:]
-    data_hash = data_string[4:8]
-    if data_hash != xxhash.xxh32(data_loaded).digest():
-        return
+    data_loaded = data_string[4:]
+    # data_hash = data_string[4:8]
+    # if data_hash != xxhash.xxh32(data_loaded).digest():
+    #     return
     first_byte = data_string[0]
     sequence_num = (first_byte & int('3f', 16)).to_bytes(
         1, byteorder='big') + data_string[1:4]

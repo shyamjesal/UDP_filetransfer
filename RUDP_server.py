@@ -32,13 +32,14 @@ def makepkg(sequence_number, data, last_packet_num):
         first_byte = (int('c0', 16) | sequence_number_bytes[0]).to_bytes(
             1, byteorder='big')
         sequence_number_bytes = first_byte+sequence_number_bytes[1:4]
-    data_hash = xxhash.xxh32(data).digest()
-    data_string = sequence_number_bytes + data_hash + data
+    # data_hash = xxhash.xxh32(data).digest()
+    # data_string = sequence_number_bytes + data_hash + data
+    data_string = sequence_number_bytes + data
     # print(sequence_number, "of size", len(data_string))
     return data_string
 
 
-def listener(sok, monitor):
+def listener(sok, monitor, rate_queue):
     timeout_interval = 0.5
     while(len(monitor)):
         try:
@@ -48,15 +49,16 @@ def listener(sok, monitor):
             if sequence_num in monitor:
                 monitor[sequence_num].cancel()
                 monitor.pop(sequence_num, -1)
+                rate_queue.pop(sequence_num, -1)
             # print("got ack for", sequence_num)
         except socket.timeout:
             print('will try after {} seconds'.format(timeout_interval))
-            timeout_interval *= 2
+            timeout_interval *= 1.2
         except ConnectionRefusedError:
             print('It seems the server is not online, sleeping for {} seconds'.format(
                 timeout_interval))
             time.sleep(timeout_interval)
-            timeout_interval *= 2
+            timeout_interval *= 1.2
         finally:
             if timeout_interval > 10:
                 print('no response since 10 seconds. exiting')
@@ -65,16 +67,17 @@ def listener(sok, monitor):
     sok.close()
 
 
-def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_num):
+def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_num, rate_queue):
     if monitor.get('disconnected', False):
         return
     elif sequence_number in monitor:
-        timer = Timer(0.5, send_packet, args=(sok, sequence_number,
-                                              data, clientAddress, monitor, last_packet_num))
+        timer = Timer(0.05, send_packet, args=(sok, sequence_number,
+                                               data, clientAddress, monitor, last_packet_num, rate_queue))
         timer.start()  # after 30 seconds, "hello, world" will be printed
         monitor[sequence_number] = timer
         packet_string = makepkg(sequence_number, data, last_packet_num)
         sok.sendto(packet_string, clientAddress)
+        rate_queue[sequence_number] = True
         # print('\t\t\t\tsent packet number', sequence_number)
     else:
         return
@@ -96,10 +99,11 @@ def Server(host, port, filename):
         last_packet_num -= 1
     print(last_packet_num)
     monitor = {}
+    rate_queue = {}
     for i in range(0, last_packet_num+1):
         monitor[i] = -1
     listener_thread = Thread(
-        target=listener, args=(sok, monitor))
+        target=listener, args=(sok, monitor, rate_queue))
     listener_thread.start()
 
     f = open(filename, "rb")
@@ -109,8 +113,10 @@ def Server(host, port, filename):
     while (data):
         if monitor.get('disconnected', False):
             break
+        if len(rate_queue) > 1000:
+            continue
         send_packet(sok, sequence_number, data,
-                    clientAddress, monitor, last_packet_num)
+                    clientAddress, monitor, last_packet_num, rate_queue)
         data = f.read(file_buffer_size)
         sequence_number += 1
     f.close()
@@ -125,6 +131,6 @@ if __name__ == '__main__':
                         help='UDP port (default 1060)')
     args = parser.parse_args()
     print(args)
- 
-    Server(args.host, args.p)
+
+    # Server(args.host, args.p)
     # server('127.0.0.1', 1060)
