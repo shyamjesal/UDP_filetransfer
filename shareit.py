@@ -7,10 +7,11 @@ import os
 import time
 os.system('pip install xxhash')
 import xxhash
-from tkinter import filedialog
+from tkinter import filedialog, messagebox, simpledialog
 from tkinter import *
 import RUDP_client
 import RUDP_server
+import requests
 
 from zipfile import ZipFile
 window = Tk()
@@ -36,24 +37,39 @@ def extract_zip(file, my_dir):
 		zip_info.filename = os.path.basename(zip_info.filename)
 		zip.extract(zip_info, my_dir)
 
+def create_msg_dialog(title, ip):
+	mb = Tk()
+	mb.withdraw()
+	messagebox.showinfo(title, ip, parent = mb)
+
 def clicked1():
 
     lbl.configure(text="Are you a Sender or receiver !!")
     files = filedialog.askopenfilenames()
     print(files)
     zip_file = create_zip(files)
-    RUDP_server.Server('127.0.0.1', 1060, zip_file)
+    print("zipping complete now sending")
+    ipaddr = os.popen("hostname -I").read().split()[0]
+    print(ipaddr)
+    
+    th = threading.Thread(target = create_msg_dialog , args = ("Receiver Code", ipaddr) )
+    th.start()
+    # messagebox.showinfo("Receiver Code", ipaddr, parent = mb)
+    RUDP_server.Server(ipaddr, 1060, zip_file)
     os.remove("tempfile.zip")
+    th.join()
+
 
 def clicked2():
 
     lbl.configure(text="Are you a Sender or receiver")
-    root = Tk()
-    root.title("Select directory to save")
-    root.withdraw()
+    # root = Tk()
+    # root.title("Select directory to save")
+    # root.withdraw()
+    answer = simpledialog.askstring("Receiver Code", "Ask Sender for code")
     folder_selected = filedialog.askdirectory()
-    root.destroy()
-    RUDP_client.Client('127.0.0.1', 1060)
+    # root.destroy()
+    RUDP_client.Client(answer, 1060)
     extract_zip("./receivedfile.zip",folder_selected)
     os.remove("./receivedfile.zip")
 
