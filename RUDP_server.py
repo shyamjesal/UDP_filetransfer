@@ -19,7 +19,7 @@ file_buffer_size = 65400
                                             1->data
     second bit indicates last packet        0->not last
                                             1->last
-    Next 4 bytes are the xxhash value 
+    Next 4 bytes are the xxhash value
 '''
 
 
@@ -34,7 +34,7 @@ def makepkg(sequence_number, data, last_packet_num):
         first_byte = (int('c0', 16) | sequence_number_bytes[0]).to_bytes(
             1, byteorder='big')
         sequence_number_bytes = first_byte+sequence_number_bytes[1:4]
-    data_hash = xxhash.xxh32(data).digest()
+    data_hash = xxhash.xxh32(sequence_number_bytes+data).digest()
     data_string = sequence_number_bytes + data_hash + data
     # data_string = sequence_number_bytes + data
     # print(sequence_number, "of size", len(data_string))
@@ -49,7 +49,11 @@ def listener(sok, monitor, rate_queue, timeout_params):
             message, clientAddress = sok.recvfrom(2048)
             # sequence_num = int.from_bytes(message[0:4], byteorder='big')
             first_byte = message[0]
+            # discard packet if message type is 0(handshake)
             if first_byte >> 7 & 1 == 0:
+                continue
+            # if hash is not correct, discard ack
+            if message[4:8] != xxhash.xxh32(message[0:4]).digest():
                 continue
             else:
                 sequence_num = (first_byte & int('7f', 16)).to_bytes(

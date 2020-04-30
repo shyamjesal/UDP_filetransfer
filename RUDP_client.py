@@ -12,9 +12,10 @@ buffer_size = 65507
 
 
 def process_data(sok, data_string, monitor):
+    sequence_number_bytes = data_string[0:4]
     data_hash = data_string[4:8]
     data_loaded = data_string[8:]
-    if data_hash != xxhash.xxh32(data_loaded).digest():
+    if data_hash != xxhash.xxh32(sequence_number_bytes+data_loaded).digest():
         return
     first_byte = data_string[0]
     sequence_num = (first_byte & int('3f', 16)).to_bytes(
@@ -33,7 +34,7 @@ def process_data(sok, data_string, monitor):
 def send_ak(sok, number):
     code = 1 << 31 | number
     message = code.to_bytes(4, byteorder='big')
-    sok.send(message)
+    sok.send(message+xxhash.xxh32(message).digest())
     print('sending ack for', number)
 
 
