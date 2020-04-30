@@ -41,23 +41,39 @@ def makepkg(sequence_number, data, last_packet_num):
     return data_string
 
 
-def listener(sok, monitor, rate_queue, RTT):
+def listener(sok, monitor, rate_queue, timeout_params):
     timeout_interval = 0.5
     while(len(monitor)):
         try:
             sok.settimeout(timeout_interval)
             message, clientAddress = sok.recvfrom(2048)
-            sequence_num = int.from_bytes(message[0:4], byteorder='big')
+            # sequence_num = int.from_bytes(message[0:4], byteorder='big')
+            first_byte = message[0]
+            if first_byte >> 7 & 1 == 0:
+                continue
+            else:
+                sequence_num = (first_byte & int('7f', 16)).to_bytes(
+                    1, byteorder='big') + message[1:4]
+                sequence_num = int.from_bytes(
+                    sequence_num[0:4], byteorder='big')
             if sequence_num in monitor:
-                # monitor[sequence_num].cancel()
+
+                # finding RTT
+                sampleRTT = current_time() - monitor[sequence_num]
+                if timeout_params.get('estRTT', -1) == -1:
+                    timeout_params['devRTT'] = 0
+                    timeout_params['estRTT'] = sampleRTT
+                else:
+                    timeout_params['estRTT'] = 0.125 * \
+                        (sampleRTT) + 0.875*timeout_params['estRTT']
+                    timeout_params['devRTT'] = 0.75 * \
+                        timeout_params['devRTT'] + \
+                        abs(timeout_params['estRTT']-sampleRTT)
+                    timeout_params['interval'] = timeout_params['estRTT'] + \
+                        4*timeout_params['devRTT']
+
                 monitor.pop(sequence_num, -1)
-                # if RTT == 0 and rate_queue.get(sequence_num, -1) != -1:
-                #     RTT = current_time()-rate_queue[sequence_num]
-                # elif rate_queue.get(sequence_num, -1) != -1:
-                #     RTT = 0.125*(current_time() -
-                #                  rate_queue[sequence_num]) + 0.875*RTT
-                #     if RTT > 0.5 or len(rate_queue) > 500:
-                # print("queue len", len(rate_queue))
+
                 rate_queue.pop(sequence_num, -1)
             # if rate_queue.get(sequence_num, -1) != -1:
             #     print("got ack for", sequence_num, "qlen", len(rate_queue),
@@ -87,10 +103,10 @@ def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_
         # timer = Timer(0.1, send_packet, args=(sok, sequence_number,
         #                                       data, clientAddress, monitor, last_packet_num, rate_queue))
         # timer.start()  # after 30 seconds, "hello, world" will be printed
-        monitor[sequence_number] = True
+        monitor[sequence_number] = current_time()
         packet_string = makepkg(sequence_number, data, last_packet_num)
         sok.sendto(packet_string, clientAddress)
-        rate_queue[sequence_number] = True
+        # rate_queue[sequence_number] = True
         # print('\t\t\t\tsent packet number', sequence_number)
     else:
         return
@@ -113,11 +129,11 @@ def Server(host, port, filename):
     print(last_packet_num)
     monitor = {}
     rate_queue = {}
-    RTT = 0
+    timeout_params = {'estRTT': 0, 'interval': 0, 'devRTT': 0}
     for i in range(0, last_packet_num+1):
         monitor[i] = -1
     listener_thread = Thread(
-        target=listener, args=(sok, monitor, rate_queue, RTT))
+        target=listener, args=(sok, monitor, rate_queue, timeout_params))
     listener_thread.start()
 
     f = open(filename, "rb")
@@ -126,17 +142,19 @@ def Server(host, port, filename):
 
     # send fragments
     flag = 1
-    while(flag):
+    while(len(monitor) and flag):
         send_list = monitor.copy()
         for sequence_number in send_list:
             # temp = current_time()
             if monitor.get('disconnected', False):
                 flag = 0
                 break
-            if monitor.get(sequence_number, -2) == -2:
+            if monitor.get(sequence_number, -2) > 0:
                 continue
             time.sleep(0.02)
-            print("sending packet", sequence_number, "qlen", len(rate_queue))
+            while(current_time() - monitor.get(sequence_number, 0) < timeout_params['interval']):
+                time.sleep(0.001)
+            print("sending packet", sequence_number, "qlen", len(monitor))
             data = file_data[sequence_number * file_buffer_size:file_buffer_size *
                              (sequence_number + 1)]
             send_packet(sok, sequence_number, data,

@@ -31,7 +31,8 @@ def process_data(sok, data_string, monitor):
 
 
 def send_ak(sok, number):
-    message = number.to_bytes(4, byteorder='big')
+    code = 1 << 31 | number
+    message = code.to_bytes(4, byteorder='big')
     sok.send(message)
     print('sending ack for', number)
 
