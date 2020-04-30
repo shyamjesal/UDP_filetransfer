@@ -74,12 +74,12 @@ def listener(sok, monitor, rate_queue, timeout_params):
 
                 monitor.pop(sequence_num, -1)
 
-                rate_queue.pop(sequence_num, -1)
+                # rate_queue.pop(sequence_num, -1)
             # if rate_queue.get(sequence_num, -1) != -1:
             #     print("got ack for", sequence_num, "qlen", len(rate_queue),
             #           "RTT", current_time() - rate_queue[sequence_num])
             # else:
-            # print("got ack for", sequence_num, "qlen", len(rate_queue))
+            print("got ack for", sequence_num)
         except socket.timeout:
             print('will try after {} seconds'.format(timeout_interval))
             timeout_interval *= 1.5
@@ -149,7 +149,7 @@ def Server(host, port, filename):
             if monitor.get('disconnected', False):
                 flag = 0
                 break
-            if monitor.get(sequence_number, -2) > 0:
+            if monitor.get(sequence_number, -2) == -2:
                 continue
             time.sleep(0.02)
             while(current_time() - monitor.get(sequence_number, 0) < timeout_params['interval']):
