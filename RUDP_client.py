@@ -5,47 +5,51 @@ import argparse
 import time
 # os.system('pip install xxhash')
 import xxhash
+from timeit import default_timer as current_time
 from threading import Timer, Thread
 filename = "receivedfile.zip"
-buffer_size = 1500
+buffer_size = 65507
 
 
 def process_data(sok, data_string, monitor):
-    # data_loaded = json.loads(data)
-    data_loaded = data_string[4:]
-    # data_hash = data_string[4:8]
-    # if data_hash != xxhash.xxh32(data_loaded).digest():
-    #     return
+    data_hash = data_string[4:8]
+    data_loaded = data_string[8:]
+    if data_hash != xxhash.xxh32(data_loaded).digest():
+        return
     first_byte = data_string[0]
     sequence_num = (first_byte & int('3f', 16)).to_bytes(
         1, byteorder='big') + data_string[1:4]
     sequence_num = int.from_bytes(sequence_num[0:4], byteorder='big')
-    if (first_byte & int('80', 16)) == 128:
-        if (first_byte & int('40', 16)) == 64:
+    if first_byte >> 7 & 1:
+        if first_byte >> 6 & 1:
             monitor['eof'] = sequence_num
         monitor[sequence_num] = data_loaded
-    # print("got packet", sequence_num, "of size", len(data_string))
+        # print("got packet", sequence_num, "of size", len(data_string))
 
+    # Thread(target=send_ak, args=(sok, sequence_num)).start()
     send_ak(sok, sequence_num)
 
 
 def send_ak(sok, number):
     message = number.to_bytes(4, byteorder='big')
     sok.send(message)
-    # print('sending ack for', number)
+    print('sending ack for', number)
 
 
 def write_file(sok, monitor):
     written = 0
     f = open(filename, 'wb')
+    # data = b''
     while(True):
         if written in monitor:
             f.write(monitor[written])
+            # data += monitor[written]
             monitor.pop(written, -1)
             if monitor.get('eof', -1) == written:
                 monitor['finished'] = True
                 break
             written += 1
+    # f.write(data)
     print("file written")
     f.close()
     exit()
@@ -74,6 +78,7 @@ def initiate_handshake(host, port):
 
 def Client(host, port):
     sok = initiate_handshake(host, port)
+    start_time = current_time()
     monitor = {}
     file_thread = Thread(
         target=write_file, args=(sok, monitor))
@@ -99,7 +104,7 @@ def Client(host, port):
                 print('no response since 10 seconds. exiting')
                 break
             if monitor.get('finished', False):
-                print("transfer Complete")
+                print("transfer Complete in", current_time()-start_time)
                 break
 
 
