@@ -41,9 +41,11 @@ def makepkg(sequence_number, data, last_packet_num):
     return data_string
 
 
-def listener(sok, monitor, rate_queue, timeout_params):
+def listener(sok, monitor, rate_queue, timeout_params, progress, last_packet_num):
     timeout_interval = 0.5
     while(len(monitor)):
+        progress = 100-((len(monitor)-1)*100/last_packet_num+1)+1
+        print("progress = {:.2f}%".format(progress))
         try:
             sok.settimeout(timeout_interval)
             message, clientAddress = sok.recvfrom(2048)
@@ -83,7 +85,7 @@ def listener(sok, monitor, rate_queue, timeout_params):
             #     print("got ack for", sequence_num, "qlen", len(rate_queue),
             #           "RTT", current_time() - rate_queue[sequence_num])
             # else:
-            print("got ack for", sequence_num)
+            # print("got ack for", sequence_num)
         except socket.timeout:
             print('will try after {} seconds'.format(timeout_interval))
             timeout_interval *= 1.5
@@ -116,7 +118,7 @@ def send_packet(sok, sequence_number, data, clientAddress, monitor, last_packet_
         return
 
 
-def Server(host, port, filename):
+def Server(host, port, filename, progress):
     sok = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     clientAddress = (host, port)
     sok.bind(clientAddress)
@@ -137,7 +139,7 @@ def Server(host, port, filename):
     for i in range(0, last_packet_num+1):
         monitor[i] = -1
     listener_thread = Thread(
-        target=listener, args=(sok, monitor, rate_queue, timeout_params))
+        target=listener, args=(sok, monitor, rate_queue, timeout_params, progress, last_packet_num))
     listener_thread.start()
 
     f = open(filename, "rb")
@@ -158,7 +160,7 @@ def Server(host, port, filename):
             time.sleep(0.02)
             while(current_time() - monitor.get(sequence_number, 0) < timeout_params['interval']):
                 time.sleep(0.001)
-            print("sending packet", sequence_number, "qlen", len(monitor))
+            # print("sending packet", sequence_number, "qlen", len(monitor))
             data = file_data[sequence_number * file_buffer_size:file_buffer_size *
                              (sequence_number + 1)]
             send_packet(sok, sequence_number, data,
@@ -180,4 +182,5 @@ if __name__ == '__main__':
     # print(args)
 
     # Server(args.host, args.p)
-    Server('127.0.0.1', 1060, filename)
+    progress = 0
+    Server('127.0.0.1', 1060, filename, progress)

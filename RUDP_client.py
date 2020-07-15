@@ -43,16 +43,20 @@ def write_file(sok, monitor):
     f = open(filename, 'wb')
     # data = b''
     while(True):
+        if monitor.get("disconnected", False):
+            print("file write incomplete")
+            break
+
         if written in monitor:
             f.write(monitor[written])
             # data += monitor[written]
             monitor.pop(written, -1)
             if monitor.get('eof', -1) == written:
                 monitor['finished'] = True
+                print("file written")
                 break
             written += 1
     # f.write(data)
-    print("file written")
     f.close()
     exit()
 
@@ -104,6 +108,7 @@ def Client(host, port):
         finally:
             if timeout_interval > 10:
                 print('no response since 10 seconds. exiting')
+                monitor['disconnected'] = True
                 break
             if monitor.get('finished', False):
                 print("transfer Complete in", current_time()-start_time)
